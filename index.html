@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroScan // Scanner de Humor Facial em Tempo Real</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cyber: {
+              950: '#060913',
+              900: '#0d1322',
+              800: '#162035',
+              700: '#223254',
+              neonCyan: '#00f2fe',
+              neonGreen: '#10b981',
+              neonPurple: '#8b5cf6'
+            }
+          },
+          fontFamily: {
+            mono: ['Consolas', 'Fira Code', 'monospace']
+          },
+          keyframes: {
+            scanline: {
+              '0%': { transform: 'translateY(-100%)' },
+              '100%': { transform: 'translateY(1000%)' }
+            },
+            pulseSlow: {
+              '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+              '50%': { opacity: '0.8', transform: 'scale(1.02)' }
+            }
+          },
+          animation: {
+            scanline: 'scanline 3s linear infinite',
+            pulseSlow: 'pulseSlow 2.5s ease-in-out infinite'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- face-api.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+  <style>
+    /* Estilização da barra de rolagem */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0d1322;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #223254;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00f2fe;
+    }
+
+    /* Brilho neon sutil */
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(0, 242, 254, 0.25);
+    }
+    .glow-badge {
+      box-shadow: 0 0 35px -5px var(--glow-color, rgba(16, 185, 129, 0.3));
+    }
+  </style>
+</head>
+<body class="bg-cyber-950 text-slate-100 min-h-screen font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-black">
+
+  <!-- BARRA DE TOPO / HEADER FUTURISTA -->
+  <header class="border-b border-cyber-700/60 bg-cyber-900/80 backdrop-blur-md sticky top-0 z-50 px-4 lg:px-8 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <!-- Ícone Futurista de IA -->
+        <div class="relative flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 p-0.5 shadow-lg shadow-cyan-500/20">
+          <div class="w-full h-full bg-cyber-950 rounded-[10px] flex items-center justify-center">
+            <svg class="w-6 h-6 text-cyan-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 014.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15.3M14.25 3.104c.251.023.501.05.75.082M19.8 15.3l-1.57.393A9.065 9.065 0 0112 15a9.065 9.065 0 00-6.23-.693L5 14.5m14.8.8l1.402 1.402c1.232 1.232.65 3.318-1.067 3.611A48.309 48.309 0 0112 21c-2.773 0-5.491-.235-8.135-.687-1.718-.293-2.3-2.379-1.067-3.61L5 14.5" />
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-black tracking-wider uppercase bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-teal-300 to-indigo-300">
+              NEUROSCAN <span class="text-xs px-2 py-0.5 ml-1 rounded-full bg-cyan-950/80 border border-cyan-500/30 text-cyan-300 font-mono">v2.4 HUD</span>
+            </h1>
+          </div>
+          <p class="text-xs text-slate-400 font-mono tracking-wide">Scanner de Humor Facial em Tempo Real via Redes Neurais</p>
+        </div>
+      </div>
+
+      <!-- Telemetria & Status -->
+      <div class="flex items-center gap-3">
+        <!-- Status Modelos IA -->
+        <div id="aiStatusBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyber-900 border border-cyber-700 text-xs font-mono">
+          <span id="aiStatusDot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+          <span id="aiStatusText" class="text-amber-300 font-medium">Carregando Modelos...</span>
+        </div>
+
+        <!-- FPS Counter -->
+        <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyber-900 border border-cyber-700 text-xs font-mono text-slate-300">
+          <span class="text-slate-400">FPS:</span>
+          <span id="fpsCounter" class="text-cyan-400 font-bold">0</span>
+        </div>
+
+        <!-- Rosto Detectado -->
+        <div class="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyber-900 border border-cyber-700 text-xs font-mono text-slate-300">
+          <span class="text-slate-400">STATUS:</span>
+          <span id="faceTrackingStatus" class="text-slate-400 font-semibold">STANDBY</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL (DASHBOARD GRID) -->
+  <main class="max-w-7xl mx-auto w-full p-4 lg:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+    <!-- COLUNA DA ESQUERDA: CÂMERA E CONTROLES (7 colunas) -->
+    <section class="lg:col-span-7 flex flex-col gap-4">
+
+      <!-- Viewport da Câmera estilo HUD Cyberpunk -->
+      <div class="relative bg-cyber-900/90 rounded-2xl border border-cyber-700/80 overflow-hidden shadow-2xl glow-cyan flex flex-col">
+        
+        <!-- Top bar do HUD da câmera -->
+        <div class="bg-cyber-900 px-4 py-2.5 border-b border-cyber-700/60 flex items-center justify-between text-xs font-mono text-slate-400">
+          <div class="flex items-center gap-2">
+            <span class="inline-block w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span class="uppercase tracking-wider text-cyan-300 font-semibold">FEED ÓPTICO // BIOMETRIA</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <span id="resolutionIndicator" class="text-slate-400">640x480</span>
+            <span class="text-cyber-700">|</span>
+            <span id="sensorState" class="text-amber-400 font-semibold">INATIVO</span>
+          </div>
+        </div>
+
+        <!-- Container do Vídeo + Canvas (com espelhamento para experiência de espelho) -->
+        <div class="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
+          
+          <!-- Elemento de Vídeo -->
+          <video 
+            id="webcam" 
+            autoplay 
+            muted 
+            playsinline 
+            class="absolute inset-0 w-full h-full object-cover -scale-x-100 transition-opacity duration-300 opacity-0"
+          ></video>
+
+          <!-- Elemento Canvas de Desenho por Cima -->
+          <canvas 
+            id="overlay" 
+            class="absolute inset-0 w-full h-full object-cover -scale-x-100 pointer-events-none z-10"
+          ></canvas>
+
+          <!-- Marcadores de canto estilo HUD / Scanner -->
+          <div class="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-cyan-400 pointer-events-none z-20"></div>
+          <div class="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-cyan-400 pointer-events-none z-20"></div>
+          <div class="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-cyan-400 pointer-events-none z-20"></div>
+          <div class="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-cyan-400 pointer-events-none z-20"></div>
+
+          <!-- Linha de Scan Laser (aparece quando a câmera está ativa) -->
+          <div id="scanLine" class="hidden absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_12px_#00f2fe] z-20 pointer-events-none animate-scanline"></div>
+
+          <!-- Mira Central Holográfica Discreta -->
+          <div id="hudCrosshair" class="hidden absolute inset-0 pointer-events-none z-20 flex items-center justify-center opacity-30">
+            <div class="w-32 h-32 rounded-full border border-dashed border-cyan-400 flex items-center justify-center">
+              <div class="w-2 h-2 bg-cyan-400 rounded-full"></div>
+            </div>
+          </div>
+
+          <!-- Tela de Standby / Placeholder quando a câmera está desligada -->
+          <div id="cameraPlaceholder" class="flex flex-col items-center justify-center p-6 text-center z-30 transition-all duration-300">
+            <div class="w-20 h-20 rounded-2xl bg-cyber-800/80 border border-cyber-700 flex items-center justify-center mb-4 text-cyan-400 shadow-inner">
+              <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+              </svg>
+            </div>
+            <h3 class="text-base font-semibold text-slate-200 mb-1">Câmera Desconectada</h3>
+            <p id="placeholderSubtitle" class="text-xs text-slate-400 max-w-sm">
+              Aguardando carregamento dos pesos neurais para liberar a captura ótica.
+            </p>
+          </div>
+
+          <!-- Mensagem de Advertência de Erro (se houver bloqueio de permissão) -->
+          <div id="cameraErrorBox" class="hidden absolute inset-0 bg-cyber-950/95 flex flex-col items-center justify-center p-6 text-center z-40">
+            <div class="w-16 h-16 rounded-full bg-rose-950/80 border border-rose-500/50 flex items-center justify-center text-rose-400 mb-3">
+              <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+            </div>
+            <h4 class="text-sm font-bold text-rose-300 uppercase font-mono">Falha ao Acessar Câmera</h4>
+            <p id="cameraErrorMessage" class="text-xs text-slate-300 max-w-md mt-1 mb-4">
+              Permissão de vídeo negada ou dispositivo indisponível.
+            </p>
+            <button id="btnRetryCamera" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold rounded-lg">
+              Tentar Novamente
+            </button>
+          </div>
+        </div>
+
+        <!-- Painel de Ações e Controles -->
+        <div class="p-4 bg-cyber-900 border-t border-cyber-700/60 flex flex-wrap items-center justify-between gap-3">
+          <!-- Botão Principal de Ligar / Desligar Câmera -->
+          <div class="flex items-center gap-3">
+            <button 
+              id="btnToggleCamera" 
+              disabled 
+              class="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-slate-800 text-slate-500 cursor-not-allowed font-semibold text-sm transition-all duration-200 shadow-lg"
+            >
+              <!-- Ícone da Câmera -->
+              <svg id="iconCameraOff" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <svg id="iconCameraOn" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" />
+              </svg>
+              <span id="btnCameraText">Aguarde os Modelos...</span>
+            </button>
+
+            <!-- Botão de Trocar Câmera (caso haja mais de uma) -->
+            <button 
+              id="btnFlipCamera" 
+              title="Trocar câmera (frontal/traseira)" 
+              class="p-2.5 rounded-xl bg-cyber-800 hover:bg-cyber-700 border border-cyber-700 text-slate-300 transition-colors hidden"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Toggles Visuais de IA (Mesh / Caixa) -->
+          <div class="flex items-center gap-4 text-xs font-mono">
+            <label class="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-cyan-300 transition-colors">
+              <input id="toggleMesh" type="checkbox" checked class="w-4 h-4 accent-cyan-500 rounded bg-cyber-800 border-cyber-700 focus:ring-0 cursor-pointer" />
+              <span>Pontos Faciais</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer select-none text-slate-300 hover:text-cyan-300 transition-colors">
+              <input id="toggleBox" type="checkbox" checked class="w-4 h-4 accent-cyan-500 rounded bg-cyber-800 border-cyber-700 focus:ring-0 cursor-pointer" />
+              <span>Bounding Box</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Caixa de Dicas Rápidas para a Apresentação na Escola Técnica -->
+      <div class="bg-cyber-900/50 border border-cyber-800 rounded-xl p-4 flex items-start gap-3 text-xs text-slate-400">
+        <div class="p-1.5 rounded-lg bg-cyan-950 border border-cyan-800 text-cyan-400 mt-0.5">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <span class="font-semibold text-slate-300">Dica para a Demonstração Técnica:</span>
+          Experimente alternar suas expressões de forma exagerada (sorria abertamente, faça cara de espanto ou de foco concentrado). Os tensores da biblioteca <span class="text-cyan-300 font-mono">face-api.js</span> recalculam a matriz de probabilidades em cada quadro de vídeo via WebGL diretamente na GPU do seu navegador, sem enviar dados para a nuvem!
+        </div>
+      </div>
+    </section>
+
+    <!-- COLUNA DA DIREITA: DASHBOARD DE EMOÇÕES & DIAGNÓSTICO (5 colunas) -->
+    <section class="lg:col-span-5 flex flex-col gap-5">
+
+      <!-- CARD 1: EMOÇÃO DOMINANTE EM DESTAQUE -->
+      <div class="bg-cyber-900/90 border border-cyber-700/80 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+        <!-- Glow de fundo sutil -->
+        <div class="absolute -right-8 -top-8 w-32 h-32 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex items-center justify-between mb-3 border-b border-cyber-700/50 pb-2">
+          <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 font-semibold flex items-center gap-2">
+            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            EXPRESSÃO PREDOMINANTE
+          </span>
+          <span id="dominantScore" class="text-xs font-mono font-bold text-slate-400">0% DE CERTEZA</span>
+        </div>
+
+        <div class="flex items-center gap-5 my-2">
+          <!-- Emoji Gigante Animado -->
+          <div id="dominantEmoji" class="text-6xl sm:text-7xl filter drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)] transition-transform duration-300 transform scale-100 flex-shrink-0">
+            🤖
+          </div>
+
+          <!-- Rótulo Principal -->
+          <div class="min-w-0 flex-1">
+            <h2 id="dominantLabel" class="text-2xl sm:text-3xl font-black tracking-tight text-white capitalize truncate">
+              Aguardando...
+            </h2>
+            <p id="dominantSubtext" class="text-xs font-mono text-cyan-300/80 mt-1">
+              Inicie a câmera e posicione seu rosto
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CARD 2: O SELO DE DIAGNÓSTICO DIVERTIDO -->
+      <div id="diagnosticCard" class="bg-gradient-to-br from-cyber-900 to-cyber-800 border-2 border-emerald-500/40 rounded-2xl p-5 shadow-xl glow-badge transition-all duration-500 relative overflow-hidden" style="--glow-color: rgba(16, 185, 129, 0.25);">
+        
+        <!-- Faixa de carimbo no topo -->
+        <div class="flex items-center justify-between mb-2.5">
+          <span class="text-[10px] font-mono uppercase tracking-widest font-black px-2.5 py-1 rounded bg-black/40 border border-white/10 text-slate-300">
+            LAUDO BIOMÉTRICO DO ALUNO
+          </span>
+          <span id="diagnosticTime" class="text-[10px] font-mono text-slate-400">--:--:--</span>
+        </div>
+
+        <!-- Título do Selo com Efeito Stamp -->
+        <div class="flex items-center gap-2.5 mt-2">
+          <div id="diagnosticBadgeIcon" class="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-400/50 flex items-center justify-center text-emerald-400 font-bold flex-shrink-0">
+            ✓
+          </div>
+          <h3 id="diagnosticTitle" class="text-lg font-black tracking-wider uppercase text-emerald-400 leading-tight">
+            CALIBRANDO SISTEMA
+          </h3>
+        </div>
+
+        <!-- Descrição / Frase Divertida da Escola Técnica -->
+        <p id="diagnosticDescription" class="text-xs text-slate-200 mt-2.5 leading-relaxed bg-black/30 p-3 rounded-xl border border-white/5">
+          Posicione-se em frente à lente óptica para que o algoritmo analise seu nível de estresse, foco ou felicidade pré-prova!
+        </p>
+      </div>
+
+      <!-- CARD 3: BARRAS DINÂMICAS DE TODAS AS 7 EXPRESSÕES -->
+      <div class="bg-cyber-900/90 border border-cyber-700/80 rounded-2xl p-5 shadow-2xl flex-1 flex flex-col justify-between">
+        <div class="flex items-center justify-between mb-3 border-b border-cyber-700/50 pb-2">
+          <h4 class="text-xs font-mono uppercase tracking-widest text-slate-300 font-bold flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            ESPECTRO DE SENTIMENTOS
+          </h4>
+          <span class="text-[10px] font-mono text-slate-400">Tempo Real (0-100%)</span>
+        </div>
+
+        <!-- Lista das 7 emoções -->
+        <div id="emotionsList" class="space-y-3 font-mono text-xs">
+          
+          <!-- Feliz (Happy) -->
+          <div data-emotion="happy" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-emerald-400 transition-colors">
+                <span>😊</span>
+                <span>Feliz (Happy)</span>
+              </span>
+              <span class="emotion-pct text-emerald-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Neutro (Neutral) -->
+          <div data-emotion="neutral" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-cyan-400 transition-colors">
+                <span>😐</span>
+                <span>Neutro (Neutral)</span>
+              </span>
+              <span class="emotion-pct text-cyan-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-cyan-500 to-blue-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Surpreso (Surprised) -->
+          <div data-emotion="surprised" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-amber-400 transition-colors">
+                <span>😲</span>
+                <span>Surpreso (Surprised)</span>
+              </span>
+              <span class="emotion-pct text-amber-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-amber-500 to-yellow-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Bravo (Angry) -->
+          <div data-emotion="angry" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-rose-400 transition-colors">
+                <span>😡</span>
+                <span>Bravo (Angry)</span>
+              </span>
+              <span class="emotion-pct text-rose-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-rose-600 to-red-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Triste (Sad) -->
+          <div data-emotion="sad" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-indigo-400 transition-colors">
+                <span>😢</span>
+                <span>Triste (Sad)</span>
+              </span>
+              <span class="emotion-pct text-indigo-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Assustado (Fearful) -->
+          <div data-emotion="fearful" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-purple-400 transition-colors">
+                <span>😨</span>
+                <span>Assustado (Fearful)</span>
+              </span>
+              <span class="emotion-pct text-purple-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-purple-500 to-fuchsia-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+          <!-- Enojado (Disgusted) -->
+          <div data-emotion="disgusted" class="group">
+            <div class="flex items-center justify-between mb-1">
+              <span class="flex items-center gap-1.5 text-slate-300 font-medium group-hover:text-lime-400 transition-colors">
+                <span>🤢</span>
+                <span>Enojado (Disgusted)</span>
+              </span>
+              <span class="emotion-pct text-lime-400 font-bold font-mono">0.0%</span>
+            </div>
+            <div class="w-full h-2 rounded-full bg-cyber-950 border border-cyber-700/60 overflow-hidden">
+              <div class="emotion-bar h-full rounded-full bg-gradient-to-r from-lime-500 to-emerald-400 transition-all duration-150 w-0"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- RODAPÉ TÉCNICO -->
+  <footer class="border-t border-cyber-700/60 bg-cyber-900/60 py-3 px-6 text-center text-xs font-mono text-slate-400">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-cyan-400"></span>
+        <span>Demonstração de Inteligência Artificial com TensorFlow.js & Face-API.js</span>
+      </div>
+      <div>Processamento 100% Local (Client-side) • Sem envio de imagens a servidores externos</div>
+    </div>
+  </footer>
+
+  <!-- SCRIPT DE LÓGICA DO SCANNER E INTELIGÊNCIA ARTIFICIAL -->
+  <script>
+    // ==========================================
+    // CONFIGURAÇÃO DOS MODELOS E URLs CDN
+    // ==========================================
+    // Carregamos os modelos diretamente do repositório CDN jsDelivr com suporte CORS garantido
+    const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
+
+    // Dicionário de Emoções com traduções, emojis e diagnósticos divertidos (tema escolar/tech)
+    const EMOTION_CONFIG = {
+      happy: {
+        name: 'Feliz / Confiante',
+        emoji: '😄',
+        textColor: 'text-emerald-400',
+        badgeBorder: 'border-emerald-500/50',
+        badgeBg: 'from-cyber-900 to-emerald-950/40',
+        glowColor: 'rgba(16, 185, 129, 0.35)',
+        badgeIcon: '🚀',
+        title: 'PRONTO PARA PASSAR DE ANO!',
+        description: 'Vibe de quem compilou o código de primeira sem nenhum erro de sintaxe e já garantiu o diploma!'
+      },
+      neutral: {
+        name: 'Neutro / Concentrado',
+        emoji: '😐',
+        textColor: 'text-cyan-400',
+        badgeBorder: 'border-cyan-500/50',
+        badgeBg: 'from-cyber-900 to-cyan-950/40',
+        glowColor: 'rgba(0, 242, 254, 0.35)',
+        badgeIcon: '⚡',
+        title: 'MODO FOCO EXTREMO ATIVADO',
+        description: 'Processando matrizes binárias na velocidade da luz. Neurônios em overclock pleno!'
+      },
+      surprised: {
+        name: 'Surpreso / Impressionado',
+        emoji: '😲',
+        textColor: 'text-amber-400',
+        badgeBorder: 'border-amber-500/50',
+        badgeBg: 'from-cyber-900 to-amber-950/40',
+        glowColor: 'rgba(245, 158, 11, 0.35)',
+        badgeIcon: '💡',
+        title: 'MOMENTO EUREKA DETECTADO!',
+        description: 'Acabou de descobrir que o deploy na sexta-feira às 18h realmente funcionou sem derrubar o servidor!'
+      },
+      sad: {
+        name: 'Triste / Desanimado',
+        emoji: '🥺',
+        textColor: 'text-indigo-400',
+        badgeBorder: 'border-indigo-500/50',
+        badgeBg: 'from-cyber-900 to-indigo-950/40',
+        glowColor: 'rgba(99, 102, 241, 0.35)',
+        badgeIcon: '☕',
+        title: 'RECARGA DE CAFÉ URGENTE',
+        description: 'Nível de cafeína perigosamente baixo ou esqueceu um ponto e vírgula na linha 42 antes da entrega.'
+      },
+      angry: {
+        name: 'Irritado / Bravo',
+        emoji: '😤',
+        textColor: 'text-rose-400',
+        badgeBorder: 'border-rose-500/50',
+        badgeBg: 'from-cyber-900 to-rose-950/40',
+        glowColor: 'rgba(244, 63, 94, 0.35)',
+        badgeIcon: '🔥',
+        title: 'DEBUGGER EM FÚRIA',
+        description: 'Alguém mexeu no arquivo que estava funcionando perfeitamente há 5 minutos atrás!'
+      },
+      fearful: {
+        name: 'Assustado / Tenso',
+        emoji: '😨',
+        textColor: 'text-purple-400',
+        badgeBorder: 'border-purple-500/50',
+        badgeBg: 'from-cyber-900 to-purple-950/40',
+        glowColor: 'rgba(168, 85, 247, 0.35)',
+        badgeIcon: '⚠️',
+        title: 'PÂNICO NO TERMINAL!',
+        description: 'Expressão clássica de quem deu um git push --force direto na branch main por engano.'
+      },
+      disgusted: {
+        name: 'Enojado / Desgostoso',
+        emoji: '🤢',
+        textColor: 'text-lime-400',
+        badgeBorder: 'border-lime-500/50',
+        badgeBg: 'from-cyber-900 to-lime-950/40',
+        glowColor: 'rgba(132, 204, 22, 0.35)',
+        badgeIcon: '☣️',
+        title: 'ALERTA DE CÓDIGO ESPAGUETE',
+        description: 'Visualizou 15 if-elses aninhados com variáveis chamadas a, b, teste1 e gambiarraFinal.'
+      }
+    };
+
+    // ==========================================
+    // SELETORES DO DOM
+    // ==========================================
+    const webcam = document.getElementById('webcam');
+    const overlay = document.getElementById('overlay');
+    const btnToggleCamera = document.getElementById('btnToggleCamera');
+    const btnCameraText = document.getElementById('btnCameraText');
+    const iconCameraOff = document.getElementById('iconCameraOff');
+    const iconCameraOn = document.getElementById('iconCameraOn');
+    const aiStatusBadge = document.getElementById('aiStatusBadge');
+    const aiStatusDot = document.getElementById('aiStatusDot');
+    const aiStatusText = document.getElementById('aiStatusText');
+    const fpsCounter = document.getElementById('fpsCounter');
+    const faceTrackingStatus = document.getElementById('faceTrackingStatus');
+    const resolutionIndicator = document.getElementById('resolutionIndicator');
+    const sensorState = document.getElementById('sensorState');
+    const scanLine = document.getElementById('scanLine');
+    const hudCrosshair = document.getElementById('hudCrosshair');
+    const cameraPlaceholder = document.getElementById('cameraPlaceholder');
+    const placeholderSubtitle = document.getElementById('placeholderSubtitle');
+    const cameraErrorBox = document.getElementById('cameraErrorBox');
+    const cameraErrorMessage = document.getElementById('cameraErrorMessage');
+    const btnRetryCamera = document.getElementById('btnRetryCamera');
+    const toggleMesh = document.getElementById('toggleMesh');
+    const toggleBox = document.getElementById('toggleBox');
+
+    // Elementos do Dashboard
+    const dominantEmoji = document.getElementById('dominantEmoji');
+    const dominantLabel = document.getElementById('dominantLabel');
+    const dominantSubtext = document.getElementById('dominantSubtext');
+    const dominantScore = document.getElementById('dominantScore');
+    const diagnosticCard = document.getElementById('diagnosticCard');
+    const diagnosticBadgeIcon = document.getElementById('diagnosticBadgeIcon');
+    const diagnosticTitle = document.getElementById('diagnosticTitle');
+    const diagnosticDescription = document.getElementById('diagnosticDescription');
+    const diagnosticTime = document.getElementById('diagnosticTime');
+    const emotionsList = document.getElementById('emotionsList');
+
+    // ==========================================
+    // ESTADO DA APLICAÇÃO
+    // ==========================================
+    let isModelsLoaded = false;
+    let isCameraActive = false;
+    let mediaStream = null;
+    let detectionAnimationId = null;
+    let isDetectingFrame = false;
+
+    // Métricas de FPS
+    let lastFrameTime = performance.now();
+    let frameCount = 0;
+    let currentFps = 0;
+
+    // Configuração do detector TinyFace para máxima performance no navegador
+    const tinyOptions = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 224, // 224px garante alta velocidade em tempo real (~30-60 FPS)
+      scoreThreshold: 0.5
+    });
+
+    // ==========================================
+    // CARREGAMENTO DOS MODELOS DE IA
+    // ==========================================
+    async function initNeuralNetworks() {
+      try {
+        aiStatusText.textContent = 'Baixando Redes Neurais...';
+        
+        // Carrega os 4 modelos requisitados via CDN
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+          faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
+        ]);
+
+        isModelsLoaded = true;
+
+        // Atualiza status do badge
+        aiStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        aiStatusText.textContent = 'IA Pronta (WebGL)';
+        aiStatusText.className = 'text-emerald-300 font-medium';
+        aiStatusBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-xs font-mono shadow-sm shadow-emerald-500/20';
+
+        // Habilita o botão de ligar a câmera
+        btnToggleCamera.disabled = false;
+        btnToggleCamera.className = 'flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm transition-all duration-200 shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer';
+        btnCameraText.textContent = 'Ligar Câmera';
+        placeholderSubtitle.textContent = 'Modelos prontos! Clique no botão "Ligar Câmera" abaixo para iniciar a demonstração.';
+
+      } catch (error) {
+        console.error('Erro ao carregar modelos do face-api.js:', error);
+        aiStatusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        aiStatusText.textContent = 'Erro ao Carregar IA';
+        aiStatusText.className = 'text-rose-400 font-medium';
+        aiStatusBadge.className = 'flex items-center gap-2 px-3 py-1.5 rounded-lg bg-rose-950/80 border border-rose-500/40 text-xs font-mono';
+        placeholderSubtitle.textContent = 'Falha ao baixar pesos neurais. Verifique sua conexão com a internet para baixar os modelos do CDN.';
+      }
+    }
+
+    // ==========================================
+    // CONTROLE DA WEBCAM
+    // ==========================================
+    async function startCamera() {
+      if (!isModelsLoaded) return;
+
+      try {
+        cameraErrorBox.classList.add('hidden');
+        btnCameraText.textContent = 'Iniciando Lente...';
+
+        // Solicita acesso à webcam com preferência de proporção 4:3 ou 16:9
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+            facingMode: 'user'
+          },
+          audio: false
+        });
+
+        webcam.srcObject = mediaStream;
+
+        // Aguarda metadados para saber tamanho real
+        await new Promise((resolve) => {
+          webcam.onloadedmetadata = () => {
+            resolve();
+          };
+        });
+
+        await webcam.play();
+
+        isCameraActive = true;
+        webcam.classList.remove('opacity-0');
+        webcam.classList.add('opacity-100');
+        cameraPlaceholder.classList.add('hidden');
+        scanLine.classList.remove('hidden');
+        hudCrosshair.classList.remove('hidden');
+
+        // Atualiza botões e indicadores de status
+        iconCameraOff.classList.add('hidden');
+        iconCameraOn.classList.remove('hidden');
+        btnCameraText.textContent = 'Desligar Câmera';
+        btnToggleCamera.className = 'flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm transition-all duration-200 shadow-lg shadow-rose-600/30 active:scale-95 cursor-pointer';
+
+        sensorState.textContent = 'ONLINE';
+        sensorState.className = 'text-cyan-400 font-semibold animate-pulse';
+        resolutionIndicator.textContent = `${webcam.videoWidth}x${webcam.videoHeight}`;
+
+        // Inicia o loop de detecção facial contínua
+        startDetectionLoop();
+
+      } catch (err) {
+        console.error('Erro ao acessar webcam:', err);
+        showCameraError('Não foi possível obter acesso à câmera. Certifique-se de autorizar as permissões no seu navegador.');
+        stopCamera();
+      }
+    }
+
+    function stopCamera() {
+      isCameraActive = false;
+
+      if (detectionAnimationId) {
+        cancelAnimationFrame(detectionAnimationId);
+        detectionAnimationId = null;
+      }
+
+      if (mediaStream) {
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+      }
+
+      webcam.srcObject = null;
+      webcam.classList.add('opacity-0');
+      cameraPlaceholder.classList.remove('hidden');
+      scanLine.classList.add('hidden');
+      hudCrosshair.classList.add('hidden');
+
+      // Limpa o canvas de overlay
+      const ctx = overlay.getContext('2d');
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      // Reseta botões e status
+      iconCameraOff.classList.remove('hidden');
+      iconCameraOn.classList.add('hidden');
+      btnCameraText.textContent = isModelsLoaded ? 'Ligar Câmera' : 'Aguarde os Modelos...';
+      btnToggleCamera.className = isModelsLoaded
+        ? 'flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-bold text-sm transition-all duration-200 shadow-lg shadow-cyan-500/25 active:scale-95 cursor-pointer'
+        : 'flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-slate-800 text-slate-500 cursor-not-allowed font-semibold text-sm transition-all duration-200 shadow-lg';
+
+      sensorState.textContent = 'INATIVO';
+      sensorState.className = 'text-amber-400 font-semibold';
+      faceTrackingStatus.textContent = 'STANDBY';
+      faceTrackingStatus.className = 'text-slate-400 font-semibold';
+      fpsCounter.textContent = '0';
+
+      // Reseta o card principal para estado de espera
+      resetDashboardToWaiting();
+    }
+
+    function showCameraError(msg) {
+      cameraErrorMessage.textContent = msg;
+      cameraErrorBox.classList.remove('hidden');
+    }
+
+    // ==========================================
+    // LOOP EM TEMPO REAL DE DETECÇÃO E IA
+    // ==========================================
+    function startDetectionLoop() {
+      // Ajusta o tamanho intrínseco do canvas às dimensões reais do vídeo
+      overlay.width = webcam.videoWidth;
+      overlay.height = webcam.videoHeight;
+      const displaySize = { width: webcam.videoWidth, height: webcam.videoHeight };
+      faceapi.matchDimensions(overlay, displaySize);
+
+      async function detect() {
+        if (!isCameraActive) return;
+
+        // Evita chamadas concorrentes caso o modelo demore mais que 1 frame
+        if (!isDetectingFrame && webcam.readyState >= 2) {
+          isDetectingFrame = true;
+
+          try {
+            // Detecção com TinyFaceDetector, Landmarks e Expressões Faciais
+            const detection = await faceapi
+              .detectSingleFace(webcam, tinyOptions)
+              .withFaceLandmarks(true) // usa o modelo tiny de landmarks
+              .withFaceExpressions();
+
+            // Cálculo do FPS em tempo real
+            calcFps();
+
+            // Limpa desenho anterior
+            const ctx = overlay.getContext('2d');
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            if (detection) {
+              faceTrackingStatus.textContent = 'RASTREADO';
+              faceTrackingStatus.className = 'text-emerald-400 font-bold';
+
+              const resizedDetection = faceapi.resizeResults(detection, displaySize);
+
+              // Desenha Bounding Box se ativado
+              if (toggleBox.checked) {
+                const box = resizedDetection.detection.box;
+                // Desenha moldura estilizada futurista no canvas
+                drawFuturisticBox(ctx, box);
+              }
+
+              // Desenha malha facial de 68 pontos se ativado
+              if (toggleMesh.checked) {
+                faceapi.draw.drawFaceLandmarks(overlay, resizedDetection, {
+                  drawLines: true,
+                  color: '#00f2fe',
+                  lineWidth: 1.5
+                });
+              }
+
+              // Atualiza o painel com as expressões
+              updateEmotionsUI(detection.expressions);
+
+            } else {
+              faceTrackingStatus.textContent = 'BUSCANDO ROSTO...';
+              faceTrackingStatus.className = 'text-amber-400 font-semibold';
+              // Mantém as barras mas avisa que o rosto saiu do campo
+              dominantSubtext.textContent = 'Nenhum rosto focado no sensor';
+            }
+
+          } catch (err) {
+            console.error('Erro no processamento da imagem:', err);
+          } finally {
+            isDetectingFrame = false;
+          }
+        }
+
+        detectionAnimationId = requestAnimationFrame(detect);
+      }
+
+      detect();
+    }
+
+    // Desenha uma caixa com visual de HUD cibernético personalizada
+    function drawFuturisticBox(ctx, box) {
+      const { x, y, width, height } = box;
+      const len = Math.min(20, width * 0.2);
+
+      ctx.save();
+      ctx.strokeStyle = '#00f2fe';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#00f2fe';
+      ctx.shadowBlur = 8;
+
+      // Canto Superior Esquerdo
+      ctx.beginPath();
+      ctx.moveTo(x, y + len);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + len, y);
+      ctx.stroke();
+
+      // Canto Superior Direito
+      ctx.beginPath();
+      ctx.moveTo(x + width - len, y);
+      ctx.lineTo(x + width, y);
+      ctx.lineTo(x + width, y + len);
+      ctx.stroke();
+
+      // Canto Inferior Esquerdo
+      ctx.beginPath();
+      ctx.moveTo(x, y + height - len);
+      ctx.lineTo(x, y + height);
+      ctx.lineTo(x + len, y + height);
+      ctx.stroke();
+
+      // Canto Inferior Direito
+      ctx.beginPath();
+      ctx.moveTo(x + width - len, y + height);
+      ctx.lineTo(x + width, y + height);
+      ctx.lineTo(x + width, y + height - len);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    // ==========================================
+    // ATUALIZAÇÃO DA INTERFACE DO USUÁRIO (HUD)
+    // ==========================================
+    function updateEmotionsUI(expressions) {
+      // 1. Encontra a emoção dominante (maior pontuação)
+      let dominantKey = 'neutral';
+      let dominantVal = 0;
+
+      for (const [key, value] of Object.entries(expressions)) {
+        if (value > dominantVal) {
+          dominantVal = value;
+          dominantKey = key;
+        }
+      }
+
+      const conf = EMOTION_CONFIG[dominantKey] || EMOTION_CONFIG.neutral;
+      const dominantPercent = Math.round(dominantVal * 100);
+
+      // 2. Atualiza o Card Dominante
+      dominantEmoji.textContent = conf.emoji;
+      dominantLabel.textContent = conf.name;
+      dominantScore.textContent = `${dominantPercent}% DE CERTEZA`;
+      dominantScore.className = `text-xs font-mono font-bold ${conf.textColor}`;
+      dominantSubtext.textContent = `Expressão ativa confirmada pela rede neural`;
+
+      // Animação de pulsar no emoji na troca
+      dominantEmoji.classList.remove('scale-100');
+      dominantEmoji.classList.add('scale-110');
+      setTimeout(() => {
+        dominantEmoji.classList.remove('scale-110');
+        dominantEmoji.classList.add('scale-100');
+      }, 150);
+
+      // 3. Atualiza o Selo de Diagnóstico Divertido
+      diagnosticTitle.textContent = conf.title;
+      diagnosticTitle.className = `text-lg font-black tracking-wider uppercase leading-tight ${conf.textColor}`;
+      diagnosticDescription.textContent = conf.description;
+      diagnosticBadgeIcon.textContent = conf.badgeIcon;
+      diagnosticCard.style.setProperty('--glow-color', conf.glowColor);
+
+      // Borda e gradiente
+      diagnosticCard.className = `bg-gradient-to-br ${conf.badgeBg} border-2 ${conf.badgeBorder} rounded-2xl p-5 shadow-xl glow-badge transition-all duration-300 relative overflow-hidden`;
+
+      // Atualiza o relógio do laudo
+      const now = new Date();
+      diagnosticTime.textContent = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0').slice(0, 2);
+
+      // 4. Atualiza todas as 7 barras de progresso dinâmicas
+      for (const [key, value] of Object.entries(expressions)) {
+        const item = emotionsList.querySelector(`[data-emotion="${key}"]`);
+        if (item) {
+          const pct = Math.round(value * 1000) / 10; // ex: 98.4%
+          const pctEl = item.querySelector('.emotion-pct');
+          const barEl = item.querySelector('.emotion-bar');
+
+          if (pctEl) pctEl.textContent = `${pct.toFixed(1)}%`;
+          if (barEl) barEl.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+        }
+      }
+    }
+
+    function resetDashboardToWaiting() {
+      dominantEmoji.textContent = '🤖';
+      dominantLabel.textContent = 'Aguardando...';
+      dominantScore.textContent = '0% DE CERTEZA';
+      dominantScore.className = 'text-xs font-mono font-bold text-slate-400';
+      dominantSubtext.textContent = 'Inicie a câmera e posicione seu rosto';
+
+      diagnosticTitle.textContent = 'CALIBRANDO SISTEMA';
+      diagnosticTitle.className = 'text-lg font-black tracking-wider uppercase text-emerald-400 leading-tight';
+      diagnosticDescription.textContent = 'Posicione-se em frente à lente óptica para que o algoritmo analise seu nível de estresse, foco ou felicidade pré-prova!';
+      diagnosticBadgeIcon.textContent = '✓';
+      diagnosticCard.style.setProperty('--glow-color', 'rgba(16, 185, 129, 0.25)');
+      diagnosticCard.className = 'bg-gradient-to-br from-cyber-900 to-cyber-800 border-2 border-emerald-500/40 rounded-2xl p-5 shadow-xl glow-badge transition-all duration-500 relative overflow-hidden';
+
+      // Zera as barras
+      const bars = emotionsList.querySelectorAll('.emotion-bar');
+      const pcts = emotionsList.querySelectorAll('.emotion-pct');
+      bars.forEach(b => b.style.width = '0%');
+      pcts.forEach(p => p.textContent = '0.0%');
+    }
+
+    function calcFps() {
+      frameCount++;
+      const now = performance.now();
+      const elapsed = now - lastFrameTime;
+
+      if (elapsed >= 1000) {
+        currentFps = Math.round((frameCount * 1000) / elapsed);
+        fpsCounter.textContent = currentFps;
+        frameCount = 0;
+        lastFrameTime = now;
+      }
+    }
+
+    // ==========================================
+    // EVENT LISTENERS E INICIALIZAÇÃO
+    // ==========================================
+    btnToggleCamera.addEventListener('click', () => {
+      if (!isCameraActive) {
+        startCamera();
+      } else {
+        stopCamera();
+      }
+    });
+
+    btnRetryCamera.addEventListener('click', () => {
+      startCamera();
+    });
+
+    // Inicia o carregamento das redes neurais assim que a página é lida
+    window.addEventListener('DOMContentLoaded', () => {
+      initNeuralNetworks();
+    });
+  </script>
+</body>
+</html>
