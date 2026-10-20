@@ -1,4 +1,4 @@
-# NeuroScan // Scanner de Humor Facial em Tempo Real
+# NeuroScan // Scanner Facial em Tempo Real
 
 Aplicação Web SPA desenvolvida com **Tailwind CSS** e **face-api.js** para demonstração de Inteligência Artificial no navegador em feiras e apresentações técnicas.
 
